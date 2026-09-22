@@ -44,6 +44,7 @@ class PDFUrlRequest(BaseModel):
     pdf_url: str = Field(..., description="HTTP/HTTPS URL or Base64 data URI of the PDF document")
     process_sequentially: Optional[bool] = None
     ocr_fallback: Optional[bool] = None
+    page_selection: Optional[str] = Field(None, description="Page selection range (e.g. '1-5, 8, 10-12')")
 
 
 class SettingsModel(BaseModel):
@@ -152,6 +153,7 @@ async def parse_pdf(
     pdf_url: Optional[str] = Form(None),
     process_sequentially: Optional[bool] = Form(None),
     ocr_fallback: Optional[bool] = Form(None),
+    page_selection: Optional[str] = Form(None),
     body: Optional[PDFUrlRequest] = Body(None)
 ):
     """
@@ -189,6 +191,7 @@ async def parse_pdf(
     # Determine runtime options
     seq_proc = process_sequentially if process_sequentially is not None else (body.process_sequentially if body and body.process_sequentially is not None else cfg.get("process_sequentially", True))
     ocr_fb = ocr_fallback if ocr_fallback is not None else (body.ocr_fallback if body and body.ocr_fallback is not None else cfg.get("ocr_fallback", True))
+    page_sel = page_selection or (body.page_selection if body else None)
 
     try:
         # Initialize providers dynamically based on current configuration
@@ -215,7 +218,7 @@ async def parse_pdf(
             ocr_fallback=ocr_fb
         )
 
-        result = parser.parse_pdf(target_input)
+        result = parser.parse_pdf(target_input, page_selection=page_sel)
 
         if "error" in result:
             raise HTTPException(status_code=500, detail=result["error"])
@@ -246,7 +249,8 @@ async def parse_pdf_stream(
     file: Optional[UploadFile] = File(None),
     pdf_url: Optional[str] = Form(None),
     process_sequentially: Optional[bool] = Form(None),
-    ocr_fallback: Optional[bool] = Form(None)
+    ocr_fallback: Optional[bool] = Form(None),
+    page_selection: Optional[str] = Form(None)
 ):
     """
     Streaming endpoint providing real-time Server-Sent Events (SSE) progress logs
@@ -307,7 +311,7 @@ async def parse_pdf_stream(
                     ocr_fallback=ocr_fb
                 )
 
-                res = parser.parse_pdf(target_input, status_callback=status_cb)
+                res = parser.parse_pdf(target_input, page_selection=page_selection, status_callback=status_cb)
                 if "error" in res:
                     loop.call_soon_threadsafe(queue.put_nowait, {"type": "error", "message": res["error"]})
                 else:

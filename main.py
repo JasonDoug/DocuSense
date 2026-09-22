@@ -4,7 +4,7 @@ import fitz  # PyMuPDF
 from PIL import Image
 import io
 import concurrent.futures
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 import re
 from dataclasses import dataclass, field
 import logging
@@ -14,6 +14,7 @@ import requests
 import tempfile
 from utils.BaseProviders import BaseLLMProvider, BaseVLMProvider
 from utils.OpenAIProviders import OpenAIProvider, OpenAIVisionProvider
+from utils.helpers import parse_page_selection
 
 
 # Configure logging
@@ -546,12 +547,13 @@ class PDFParser:
             except Exception:
                 pass
 
-    def parse_pdf(self, pdf_input: str, status_callback = None) -> Dict:
+    def parse_pdf(self, pdf_input: str, page_selection: Optional[str] = None, status_callback = None) -> Dict:
         """
         Parse a PDF file or URL and extract content using LLM/VLM.
 
         Args:
             pdf_input: Path to the PDF file, URL to the PDF, or base64 string.
+            page_selection: Optional page range/selection string (e.g. "1-5", "1,3,5", "10-20").
             status_callback: Optional callback function f(msg, level) for streaming real-time status logs.
 
         Returns:
@@ -611,7 +613,9 @@ class PDFParser:
                 if total_pages == 0:
                     self._notify("PDF document contains no pages.", "warning", status_callback)
                     return {"text": "", "pages": [], "summary": "Document is empty.", "metadata": {"total_pages": 0, "contains_images": False}}
-                self._notify(f"Opened PDF document successfully. Total pages: {total_pages}", "info", status_callback)
+
+                pages_to_process = parse_page_selection(page_selection, total_pages)
+                self._notify(f"Opened PDF successfully ({total_pages} total pages). Processing {len(pages_to_process)} selected pages (Range: '{page_selection or 'All'}').", "info", status_callback)
             except fitz.FileDataError as e:
                 self._notify(f"Failed to open PDF file: {e}", "error", status_callback)
                 raise ValueError(f"Failed to open PDF file: {e}") from e
@@ -632,10 +636,10 @@ class PDFParser:
 
             # 4. Process pages (Sequential or Parallel)
             if self.process_sequentially:
-                self._notify(f"Processing {total_pages} pages sequentially with LLM/VLM context chaining...", "info", status_callback)
+                self._notify(f"Processing {len(pages_to_process)} selected pages sequentially with context chaining...", "info", status_callback)
                 prev_summary = None
-                for page_num in range(total_pages):
-                    self._notify(f"Processing Page {page_num + 1}/{total_pages}...", "info", status_callback)
+                for idx, page_num in enumerate(pages_to_process):
+                    self._notify(f"Processing Page {page_num + 1} ({idx + 1}/{len(pages_to_process)})...", "info", status_callback)
                     page_content = self._process_single_page(
                         page_num=page_num,
                         doc=doc,
@@ -646,15 +650,10 @@ class PDFParser:
                     )
                     all_page_contents.append(page_content)
                     prev_summary = page_content.summary
-                    self._notify(f"Page {page_num + 1}/{total_pages} complete. Method: {page_content.extraction_method.upper()}", "info", status_callback)
+                    self._notify(f"Page {page_num + 1} complete ({idx + 1}/{len(pages_to_process)}). Method: {page_content.extraction_method.upper()}", "info", status_callback)
 
             else:
-                self._notify(f"Processing {total_pages} pages in parallel using {self.max_workers} worker threads...", "info", status_callback)
-                # Pass None for prev_summary in parallel mode, as order isn't guaranteed per worker
-                # and true sequential context chaining is not feasible this way.
-                # The LLM/VLM provider *could* potentially use a global context,
-                # but the current signature passes page-specific prev_summary.
-                # We explicitly pass None to reflect the independent processing.
+                self._notify(f"Processing {len(pages_to_process)} selected pages in parallel using {self.max_workers} worker threads...", "info", status_callback)
                 with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
                     future_to_page = {
                         executor.submit(
@@ -664,9 +663,9 @@ class PDFParser:
                             has_images=has_images,
                             headers=headers,
                             footers=footers,
-                            prev_summary=None  # No sequential context in parallel workers
+                            prev_summary=None
                         ): page_num
-                        for page_num in range(total_pages)
+                        for page_num in pages_to_process
                     }
 
                     # Collect results as they complete
@@ -676,15 +675,14 @@ class PDFParser:
                         try:
                             page_content = future.result()
                             results_dict[page_num] = page_content
-                            self._notify(f"Finished processing page {page_num + 1}/{total_pages} (parallel).", "info", status_callback)
+                            self._notify(f"Finished processing page {page_num + 1} (parallel).", "info", status_callback)
                         except Exception as e:
                             self._notify(f"Error processing page {page_num + 1} in parallel: {e}", "error", status_callback)
-                            # Append an error content item for the failed page
                             results_dict[page_num] = ExtractedContent(
                                 text=f"[Error processing page {page_num + 1}]",
                                 summary=f"Error on page {page_num + 1}",
                                 page_num=page_num,
-                                has_images=has_images  # Assume same image status as doc
+                                has_images=has_images
                             )
 
                     # Sort results by page number
@@ -726,6 +724,8 @@ class PDFParser:
                 "summary": document_summary,
                 "metadata": {
                     "total_pages": total_pages,
+                    "pages_processed": len(pages_to_process),
+                    "page_selection": page_selection if page_selection else "all",
                     "contains_images": has_images,
                     "processed_sequentially": self.process_sequentially,
                     "ocr_fallback_used": any_ocr_used,

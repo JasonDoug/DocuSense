@@ -110,7 +110,7 @@
 
         <!-- Parse Action Bar -->
         <div class="flex flex-wrap items-center justify-between gap-4 pt-2 border-t border-slate-100">
-          <div class="flex items-center gap-4 text-xs text-slate-600">
+          <div class="flex flex-wrap items-center gap-4 text-xs text-slate-600">
             <label class="flex items-center gap-1.5 cursor-pointer">
               <input type="checkbox" id="override-sequential" checked class="rounded border-slate-300 text-blue-600 focus:ring-blue-500">
               <span>Sequential Mode</span>
@@ -119,6 +119,10 @@
               <input type="checkbox" id="override-ocr" checked class="rounded border-slate-300 text-blue-600 focus:ring-blue-500">
               <span>OCR Fallback</span>
             </label>
+            <div class="flex items-center gap-1.5 border-l border-slate-200 pl-4">
+              <i class="fa-solid fa-list-ol text-slate-400"></i>
+              <input type="text" id="override-pages" placeholder="Pages: e.g. 1-5, 8, 10-12 (blank for all)" class="px-2.5 py-1 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none w-56">
+            </div>
           </div>
 
           <button onclick="parsePDF()" id="btn-parse" class="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm rounded-xl shadow-md flex items-center gap-2 transition-all">
@@ -178,6 +182,9 @@
               </span>
               <span id="ind-ocr" class="px-2.5 py-1 bg-slate-100 text-slate-700 border border-slate-200 rounded-lg font-medium flex items-center gap-1.5">
                 <i class="fa-solid fa-font"></i> OCR Fallback: <span id="ind-ocr-val">Not Used</span>
+              </span>
+              <span id="ind-pagesel" class="hidden px-2.5 py-1 bg-indigo-100 text-indigo-800 border border-indigo-200 rounded-lg font-medium flex items-center gap-1.5">
+                <i class="fa-solid fa-list-ol text-indigo-600"></i> Selected Pages: <span id="ind-pagesel-val">--</span>
               </span>
             </div>
           </div>
@@ -679,6 +686,11 @@ print("Parsed Text:", result["data"]["text"])</pre>
       formData.append('process_sequentially', document.getElementById('override-sequential').checked);
       formData.append('ocr_fallback', document.getElementById('override-ocr').checked);
 
+      const pageSelVal = document.getElementById('override-pages').value.trim();
+      if (pageSelVal) {
+        formData.append('page_selection', pageSelVal);
+      }
+
       if (isFileMode) {
         if (!selectedFile) {
           showToast("Please select a PDF file first!", "error");
@@ -781,11 +793,13 @@ print("Parsed Text:", result["data"]["text"])</pre>
     function renderParsedResults(data, elapsed) {
       document.getElementById('parse-results').classList.remove('hidden');
       
+      const meta = data.metadata || {};
       const numPages = data.pages ? data.pages.length : 0;
-      document.getElementById('result-meta').innerText = `Pages: ${numPages} | Time Elapsed: ${elapsed}s`;
+      const totalPagesStr = meta.total_pages ? ` of ${meta.total_pages}` : '';
+      const selStr = meta.page_selection ? ` (Selected: ${meta.page_selection})` : '';
+      document.getElementById('result-meta').innerText = `Pages Processed: ${numPages}${totalPagesStr}${selStr} | Time Elapsed: ${elapsed}s`;
 
       // Update Metadata Indicators
-      const meta = data.metadata || {};
       document.getElementById('ind-llm-val').innerText = `${(meta.llm_provider || 'N/A').toUpperCase()} (${meta.llm_model || 'N/A'})`;
       document.getElementById('ind-vlm-val').innerText = `${(meta.vlm_provider || 'N/A').toUpperCase()} (${meta.vlm_model || 'N/A'})`;
 
@@ -797,6 +811,15 @@ print("Parsed Text:", result["data"]["text"])</pre>
       } else {
         ocrElem.className = "px-2.5 py-1 bg-slate-100 text-slate-700 border border-slate-200 rounded-lg font-medium flex items-center gap-1.5";
         ocrValElem.innerText = "Not Used";
+      }
+
+      const pageSelElem = document.getElementById('ind-pagesel');
+      const pageSelValElem = document.getElementById('ind-pagesel-val');
+      if (meta.page_selection) {
+        pageSelElem.classList.remove('hidden');
+        pageSelValElem.innerText = `${meta.page_selection} (${numPages}${totalPagesStr} pages)`;
+      } else {
+        pageSelElem.classList.add('hidden');
       }
 
       // 1. Markdown view
