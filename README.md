@@ -8,7 +8,13 @@ DocuSense includes a full-featured FastAPI web app and REST API with an interact
 
 ### Running the Web Server
 
-Start the web application using `uv`:
+Start the web application using the automated startup script:
+
+```bash
+./start_server.sh
+```
+
+Or run directly with `uv`:
 
 ```bash
 uv run uvicorn api:app --host 0.0.0.0 --port 8000 --reload
