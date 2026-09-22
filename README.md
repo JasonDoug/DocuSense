@@ -25,23 +25,78 @@ Then open your browser to `http://localhost:8000`:
 - **Settings Dashboard**: Enter API keys & model names per service with live connection testing.
 - **Web Interface & REST API**: Interactive web dashboard with Markdown preview, page breakdowns, and REST API access.
 
-## How It works
+## How It Works
 
-DocuSense follows a structured workflow to extract, process, and summarize content from PDF documents. Below is a high-level overview of the process:
+DocuSense follows a structured workflow to extract, process, and summarize content from PDF documents. Below is a high-level overview of the architecture and component interactions:
 
 #### Flow Chart
+
 ![Flow Chart](docs/flowchart.png)
 *Flow chart illustrating the overall workflow of DocuSense.*
 
-1. **PDF Parsing**: The PDF is loaded and split into individual pages.
-2. **Text Extraction**: Text is extracted from each page using LLMs.
-3. **Image Processing**: If images are detected, they are processed using VLMs or OCR (Tesseract) as a fallback.
-4. **Content Summarization**: Extracted content is summarized hierarchically.
-5. **Output Generation**: The final output is structured into text, summaries, and metadata.
+<details>
+<summary>Click to view Interactive Mermaid Flowchart</summary>
+
+```mermaid
+flowchart TD
+    A["📄 Input PDF Document (File / URL / Base64)"] --> B["🔍 PyMuPDF Pre-Analysis"]
+    B --> C{"Content Router"}
+    
+    C -- "Text Content" --> D["🧠 LLM Provider (Gemini / OpenRouter / Ollama / OpenAI)"]
+    C -- "Visual Content" --> E["👁️ VLM Provider (Gemini / OpenRouter / Ollama / OpenAI)"]
+    
+    E -- "VLM Unavailable / Fails" --> F["🔤 Tesseract OCR Fallback"]
+    F --> D
+    
+    D --> G["📊 Hierarchical Summarizer"]
+    E --> G
+    
+    G --> H["✨ Structured Output & Interactive Web UI"]
+```
+
+</details>
+
+1. **PDF Parsing**: The PDF is loaded and split into individual pages using PyMuPDF (`fitz`).
+2. **Layout Pre-Analysis**: Detects repeating headers/footers and scans for visual elements.
+3. **Text & Vision Processing**: Text pages are processed via LLMs; image-heavy pages are described using Vision (VLMs).
+4. **OCR Fallback**: If a Vision VLM is unavailable or fails, Tesseract OCR automatically extracts text from image pages.
+5. **Content Summarization**: Extracted page summaries are hierarchically synthesized into an overall document summary.
+6. **Output Generation**: Delivered as structured JSON and rendered in the interactive Web UI.
 
 #### Sequence Diagram
+
 ![Sequence Diagram](docs/sequence-diagram.png)
 *Sequence diagram showing the interaction between components during PDF processing.*
+
+<details>
+<summary>Click to view Interactive Mermaid Sequence Diagram</summary>
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Client / Web UI
+    participant Server as FastAPI Server
+    participant Engine as PDFParser Engine
+    participant AI as LLM / VLM Provider
+    participant OCR as Tesseract OCR Fallback
+
+    User->>Server: POST /api/parse-pdf-stream
+    Server->>Engine: Initialize PDFParser(providers, options)
+    Engine->>Engine: Open PDF & Pre-Analyze Layout
+    Engine-->>User: SSE Stream Log: "Processing Page 1/N..."
+    Engine->>AI: process_text / process_image Prompt
+    AI-->>Engine: Extracted Text & Page Summary
+    alt VLM Unavailable or Fails
+        Engine->>OCR: Run Tesseract OCR
+        OCR-->>Engine: OCR Extracted Text
+    end
+    Engine->>AI: Hierarchical Summarization
+    AI-->>Engine: Document Summary
+    Engine-->>Server: Complete Result Object
+    Server-->>User: Deliver JSON Payload & Update UI Indicators
+```
+
+</details>
 
 ## Installation
 
