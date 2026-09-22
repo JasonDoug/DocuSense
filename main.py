@@ -31,7 +31,9 @@ class ExtractedContent:
     summary: str  # Summary of the content
     page_num: int  # Original page number (0-indexed)
     has_images: bool = False  # True if this content came primarily from an image/VLM
-    # Note: confidence and structure_tags removed as they were unused in the main flow
+    used_ocr_fallback: bool = False  # True if OCR fallback was used for this page
+    extraction_method: str = "llm"  # "llm", "vlm", "ocr", or "raw_text"
+
 
 # Removed unused class PDFProcessingChunk as processing unit is now page
 
@@ -283,7 +285,9 @@ class PDFParser:
                 text=page_text,
                 summary=f"Page {page_num + 1} content (LLM not available)",
                 page_num=page_num,
-                has_images=False  # Assuming it's a text page path
+                has_images=False,
+                used_ocr_fallback=False,
+                extraction_method="raw_text"
             )
 
         try:
@@ -300,7 +304,9 @@ class PDFParser:
                 text=processed_text,
                 summary=summary,
                 page_num=page_num,
-                has_images=False
+                has_images=False,
+                used_ocr_fallback=False,
+                extraction_method="llm"
             )
         except Exception as e:
             logger.error(
@@ -309,7 +315,9 @@ class PDFParser:
                 text=f"[Error processing text for page {page_num + 1}]",
                 summary=f"Processing error on page {page_num + 1}",
                 page_num=page_num,
-                has_images=False
+                has_images=False,
+                used_ocr_fallback=False,
+                extraction_method="llm"
             )
 
     def _process_image_page(self, page, page_num: int, prev_summary: str = None) -> ExtractedContent:
@@ -324,7 +332,9 @@ class PDFParser:
                 text=f"[Could not render image for page {page_num + 1}]",
                 summary=f"Failed to process image on page {page_num + 1}",
                 page_num=page_num,
-                has_images=True
+                has_images=True,
+                used_ocr_fallback=False,
+                extraction_method="raw_text"
             )
 
         if self.vlm_provider:
@@ -343,7 +353,9 @@ class PDFParser:
                     # Use default summary if VLM returns None
                     summary=summary or f"Page {page_num + 1} content (VLM)",
                     page_num=page_num,
-                    has_images=True
+                    has_images=True,
+                    used_ocr_fallback=False,
+                    extraction_method="vlm"
                 )
             except Exception as e:
                 logger.error(
@@ -373,7 +385,9 @@ class PDFParser:
                     text=extracted_text,
                     summary=summary,
                     page_num=page_num,
-                    has_images=True  # Still mark as has_images as the source was an image
+                    has_images=True,  # Still mark as has_images as the source was an image
+                    used_ocr_fallback=True,
+                    extraction_method="ocr"
                 )
             except Exception as e:
                 logger.error(
@@ -386,7 +400,9 @@ class PDFParser:
             text=f"[Image content on page {page_num + 1}]",
             summary=f"Page {page_num + 1} contains image content",
             page_num=page_num,
-            has_images=True
+            has_images=True,
+            used_ocr_fallback=False,
+            extraction_method="none"
         )
 
     def _process_single_page(self, page_num: int, doc, has_images: bool, headers: List[str], footers: List[str], prev_summary: str = None) -> ExtractedContent:
@@ -517,12 +533,26 @@ class PDFParser:
             # Remove the "Section Summary (Pages X-Y):" prefix
             return re.sub(r"^Section Summary \(Pages \d+-\d+\):\s*", "", group_summaries[0]).strip()
 
-    def parse_pdf(self, pdf_input: str) -> Dict:
+    def _notify(self, msg: str, level: str = "info", callback = None):
+        if level == "error":
+            logger.error(msg)
+        elif level == "warning":
+            logger.warning(msg)
+        else:
+            logger.info(msg)
+        if callback:
+            try:
+                callback(msg, level)
+            except Exception:
+                pass
+
+    def parse_pdf(self, pdf_input: str, status_callback = None) -> Dict:
         """
         Parse a PDF file or URL and extract content using LLM/VLM.
 
         Args:
             pdf_input: Path to the PDF file, URL to the PDF, or base64 string.
+            status_callback: Optional callback function f(msg, level) for streaming real-time status logs.
 
         Returns:
             Dictionary with extracted content, page-by-page summaries,
@@ -534,30 +564,26 @@ class PDFParser:
         pdf_path = None
 
         try:
-            # Log first 100 chars
-            logger.info(
-                f"Starting PDF parsing for input: {pdf_input[:100]}...")
+            self._notify(f"Starting PDF parsing pipeline...", "info", status_callback)
 
             # 1. Handle input (URL, Base64, File Path)
             if pdf_input.startswith(('http://', 'https://')):
-                logger.info(f"Input is a URL: {pdf_input}")
+                self._notify(f"Downloading PDF from URL: {pdf_input[:80]}...", "info", status_callback)
                 try:
                     response = requests.get(pdf_input, stream=True)
-                    response.raise_for_status()  # Raise an exception for bad status codes
+                    response.raise_for_status()
                     temp_file = tempfile.NamedTemporaryFile(
                         delete=False, suffix='.pdf')
                     for chunk in response.iter_content(chunk_size=8192):
                         temp_file.write(chunk)
                     temp_file.close()
                     pdf_path = temp_file.name
-                    logger.info(
-                        f"Downloaded URL to temporary file: {pdf_path}")
+                    self._notify("PDF downloaded successfully.", "info", status_callback)
                 except requests.exceptions.RequestException as e:
-                    logger.error(
-                        f"Failed to download PDF from URL {pdf_input}: {e}", exc_info=True)
+                    self._notify(f"Failed to download PDF from URL: {e}", "error", status_callback)
                     raise ValueError(f"Failed to download PDF: {e}") from e
             elif pdf_input.startswith('data:application/pdf;base64,'):
-                logger.info("Input is base64 encoded PDF")
+                self._notify("Decoding Base64 PDF data...", "info", status_callback)
                 try:
                     import base64
                     base64_data = pdf_input.split(',', 1)[1]
@@ -567,73 +593,63 @@ class PDFParser:
                     temp_file.write(pdf_bytes)
                     temp_file.close()
                     pdf_path = temp_file.name
-                    logger.info(
-                        f"Decoded base64 to temporary file: {pdf_path}")
+                    self._notify("Decoded Base64 PDF file.", "info", status_callback)
                 except Exception as e:
-                    logger.error(
-                        f"Failed to decode base64 PDF: {e}", exc_info=True)
-                    raise ValueError(
-                        f"Failed to decode base64 PDF: {e}") from e
+                    self._notify(f"Failed to decode base64 PDF: {e}", "error", status_callback)
+                    raise ValueError(f"Failed to decode base64 PDF: {e}") from e
             elif os.path.exists(pdf_input):
-                logger.info(f"Input is a file path: {pdf_input}")
+                self._notify(f"Loading local PDF file...", "info", status_callback)
                 pdf_path = pdf_input
             else:
-                logger.error(f"Invalid input: {pdf_input}")
-                raise FileNotFoundError(
-                    f"Input is not a valid file path or URL: {pdf_input}")
+                self._notify(f"Invalid input source: {pdf_input[:50]}", "error", status_callback)
+                raise FileNotFoundError(f"Input is not a valid file path or URL: {pdf_input}")
 
             # 2. Open PDF document
             try:
                 doc = fitz.open(pdf_path)
                 total_pages = len(doc)
                 if total_pages == 0:
-                    logger.warning("PDF document contains no pages.")
+                    self._notify("PDF document contains no pages.", "warning", status_callback)
                     return {"text": "", "pages": [], "summary": "Document is empty.", "metadata": {"total_pages": 0, "contains_images": False}}
-                logger.info(
-                    f"Successfully opened PDF with {total_pages} pages.")
+                self._notify(f"Opened PDF document successfully. Total pages: {total_pages}", "info", status_callback)
             except fitz.FileDataError as e:
-                logger.error(
-                    f"Failed to open PDF file {pdf_path}: {e}", exc_info=True)
+                self._notify(f"Failed to open PDF file: {e}", "error", status_callback)
                 raise ValueError(f"Failed to open PDF file: {e}") from e
             except Exception as e:
-                logger.error(
-                    f"An unexpected error occurred while opening PDF {pdf_path}: {e}", exc_info=True)
-                raise RuntimeError(
-                    f"An unexpected error occurred while opening PDF: {e}") from e
+                self._notify(f"Error opening PDF: {e}", "error", status_callback)
+                raise RuntimeError(f"An unexpected error occurred while opening PDF: {e}") from e
 
             # 3. Pre-analysis: Detect images, headers, footers
+            self._notify("Scanning document layout and inspecting visual content...", "info", status_callback)
             has_images = self._detect_has_images(doc)
-            logger.info(
-                f"PDF document contains significant images: {has_images}")
+            self._notify(f"Visual content scan completed (Has images: {has_images})", "info", status_callback)
 
             headers, footers = self._extract_headers_footers(doc)
-            logger.info(f"Detected headers: {headers}")
-            logger.info(f"Detected footers: {footers}")
+            if headers or footers:
+                self._notify(f"Detected repeating headers/footers for cleaning.", "info", status_callback)
 
             all_page_contents: List[ExtractedContent] = []
 
             # 4. Process pages (Sequential or Parallel)
             if self.process_sequentially:
-                logger.info("Processing pages sequentially.")
+                self._notify(f"Processing {total_pages} pages sequentially with LLM/VLM context chaining...", "info", status_callback)
                 prev_summary = None
                 for page_num in range(total_pages):
-                    logger.info(
-                        f"Processing page {page_num + 1}/{total_pages} sequentially.")
+                    self._notify(f"Processing Page {page_num + 1}/{total_pages}...", "info", status_callback)
                     page_content = self._process_single_page(
                         page_num=page_num,
                         doc=doc,
                         has_images=has_images,
                         headers=headers,
                         footers=footers,
-                        prev_summary=prev_summary  # Pass previous page summary
+                        prev_summary=prev_summary
                     )
                     all_page_contents.append(page_content)
-                    prev_summary = page_content.summary  # Update context for the next page
-                    # Consider adding a small delay here to avoid overwhelming APIs in sequential mode
+                    prev_summary = page_content.summary
+                    self._notify(f"Page {page_num + 1}/{total_pages} complete. Method: {page_content.extraction_method.upper()}", "info", status_callback)
 
-            else:  # Parallel Processing
-                logger.info(
-                    f"Processing pages in parallel with {self.max_workers} workers.")
+            else:
+                self._notify(f"Processing {total_pages} pages in parallel using {self.max_workers} worker threads...", "info", status_callback)
                 # Pass None for prev_summary in parallel mode, as order isn't guaranteed per worker
                 # and true sequential context chaining is not feasible this way.
                 # The LLM/VLM provider *could* potentially use a global context,
@@ -660,11 +676,9 @@ class PDFParser:
                         try:
                             page_content = future.result()
                             results_dict[page_num] = page_content
-                            logger.info(
-                                f"Finished processing page {page_num + 1}/{total_pages} (parallel).")
+                            self._notify(f"Finished processing page {page_num + 1}/{total_pages} (parallel).", "info", status_callback)
                         except Exception as e:
-                            logger.error(
-                                f"Error processing page {page_num + 1} in parallel: {e}", exc_info=True)
+                            self._notify(f"Error processing page {page_num + 1} in parallel: {e}", "error", status_callback)
                             # Append an error content item for the failed page
                             results_dict[page_num] = ExtractedContent(
                                 text=f"[Error processing page {page_num + 1}]",
@@ -678,8 +692,18 @@ class PDFParser:
                                          for i in sorted(results_dict.keys())]
 
             # 5. Generate document summary
+            self._notify("Building hierarchical document summary...", "info", status_callback)
             document_summary = self._hierarchical_summarize(all_page_contents)
-            logger.info("Generated document summary.")
+            self._notify("Generated document summary successfully.", "info", status_callback)
+
+            # Check if OCR fallback was used on any page
+            any_ocr_used = any(content.used_ocr_fallback for content in all_page_contents)
+
+            llm_prov_name = getattr(self.llm_provider, "provider_type", self.llm_provider.__class__.__name__) if self.llm_provider else "None"
+            llm_model_name = getattr(self.llm_provider, "model_name", "N/A") if self.llm_provider else "None"
+
+            vlm_prov_name = getattr(self.vlm_provider, "provider_type", self.vlm_provider.__class__.__name__) if self.vlm_provider else "None"
+            vlm_model_name = getattr(self.vlm_provider, "model_name", "N/A") if self.vlm_provider else "None"
 
             # 6. Format output
             result = {
@@ -694,7 +718,8 @@ class PDFParser:
                         "text": content.text,
                         "summary": content.summary,
                         "has_images": content.has_images,
-                        # Confidence removed as it's not reliably set
+                        "used_ocr_fallback": content.used_ocr_fallback,
+                        "extraction_method": content.extraction_method,
                     }
                     for content in all_page_contents
                 ],
@@ -702,7 +727,12 @@ class PDFParser:
                 "metadata": {
                     "total_pages": total_pages,
                     "contains_images": has_images,
-                    "processed_sequentially": self.process_sequentially
+                    "processed_sequentially": self.process_sequentially,
+                    "ocr_fallback_used": any_ocr_used,
+                    "llm_provider": llm_prov_name,
+                    "llm_model": llm_model_name,
+                    "vlm_provider": vlm_prov_name,
+                    "vlm_model": vlm_model_name,
                 }
             }
             logger.info("PDF parsing completed successfully.")

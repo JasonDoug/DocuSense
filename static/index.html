@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DocuSense - AI PDF Content Extraction & Analysis</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Marked.js for Markdown rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    .tab-active {
+      border-bottom: 2px solid #3b82f6;
+      color: #3b82f6;
+      font-weight: 600;
+    }
+    .prose pre {
+      background-color: #1f2937;
+      color: #f3f4f6;
+      padding: 1rem;
+      border-radius: 0.5rem;
+      overflow-x: auto;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col font-sans">
+
+  <!-- Header -->
+  <header class="bg-slate-900 text-white shadow-md">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+      <div class="flex items-center gap-3">
+        <div class="bg-blue-600 p-2.5 rounded-xl shadow">
+          <i class="fa-solid fa-file-pdf text-2xl text-white"></i>
+        </div>
+        <div>
+          <h1 class="text-xl font-bold tracking-tight">DocuSense</h1>
+          <p class="text-xs text-slate-400">Multi-Model AI Document Parsing & Extraction</p>
+        </div>
+      </div>
+
+      <!-- Active Provider Badge -->
+      <div id="active-provider-badge" class="flex items-center gap-2 bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-full text-xs text-slate-300">
+        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+        <span id="badge-text">Provider: Loading...</span>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="bg-slate-800 border-t border-slate-700">
+      <div class="max-w-7xl mx-auto px-4 flex gap-6 text-sm text-slate-400">
+        <button onclick="switchTab('tab-parse')" id="nav-tab-parse" class="py-3 px-1 tab-active flex items-center gap-2 transition-colors">
+          <i class="fa-solid fa-wand-magic-sparkles"></i> Parse PDF
+        </button>
+        <button onclick="switchTab('tab-settings')" id="nav-tab-settings" class="py-3 px-1 flex items-center gap-2 transition-colors hover:text-slate-200">
+          <i class="fa-solid fa-sliders"></i> Settings
+        </button>
+        <button onclick="switchTab('tab-api')" id="nav-tab-api" class="py-3 px-1 flex items-center gap-2 transition-colors hover:text-slate-200">
+          <i class="fa-solid fa-code"></i> API Access
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="max-w-7xl mx-auto px-4 py-6 flex-1 w-full">
+
+    <!-- Toast Notification -->
+    <div id="toast" class="hidden fixed top-5 right-5 z-50 bg-slate-900 text-white px-5 py-3 rounded-xl shadow-xl flex items-center gap-3 border border-slate-700">
+      <i id="toast-icon" class="fa-solid fa-circle-check text-emerald-400"></i>
+      <span id="toast-msg" class="text-sm">Action completed</span>
+    </div>
+
+    <!-- TAB 1: PARSE PDF -->
+    <div id="tab-parse" class="space-y-6">
+      
+      <!-- Upload Card -->
+      <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold text-slate-900 flex items-center gap-2">
+            <i class="fa-solid fa-file-arrow-up text-blue-600"></i> Input PDF Document
+          </h2>
+          <!-- Input Mode Switch -->
+          <div class="inline-flex rounded-lg bg-slate-100 p-1 text-xs font-medium">
+            <button id="btn-mode-file" onclick="setInputMode('file')" class="px-3 py-1.5 rounded-md bg-white text-slate-800 shadow-sm">Upload File</button>
+            <button id="btn-mode-url" onclick="setInputMode('url')" class="px-3 py-1.5 rounded-md text-slate-600 hover:text-slate-900">URL / Base64</button>
+          </div>
+        </div>
+
+        <!-- File Upload Area -->
+        <div id="area-file" class="block">
+          <label class="flex flex-col items-center justify-center w-full h-44 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer bg-slate-50 hover:bg-slate-100/80 transition-colors">
+            <div class="flex flex-col items-center justify-center pt-5 pb-6 text-center">
+              <i class="fa-solid fa-cloud-arrow-up text-3xl text-slate-400 mb-2"></i>
+              <p class="text-sm font-medium text-slate-700">Click to upload or drag and drop</p>
+              <p class="text-xs text-slate-500 mt-1">PDF files up to 50MB</p>
+              <p id="file-name-display" class="text-xs font-semibold text-blue-600 mt-2 hidden"></p>
+            </div>
+            <input id="pdf-file-input" type="file" accept=".pdf,application/pdf" class="hidden" onchange="handleFileSelect(event)">
+          </label>
+        </div>
+
+        <!-- URL / Base64 Area -->
+        <div id="area-url" class="hidden space-y-2">
+          <label class="block text-xs font-semibold uppercase text-slate-500">PDF URL or Data URI</label>
+          <input id="pdf-url-input" type="text" placeholder="https://example.com/sample.pdf or data:application/pdf;base64,..." 
+                 class="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm">
+        </div>
+
+        <!-- Parse Action Bar -->
+        <div class="flex flex-wrap items-center justify-between gap-4 pt-2 border-t border-slate-100">
+          <div class="flex items-center gap-4 text-xs text-slate-600">
+            <label class="flex items-center gap-1.5 cursor-pointer">
+              <input type="checkbox" id="override-sequential" checked class="rounded border-slate-300 text-blue-600 focus:ring-blue-500">
+              <span>Sequential Mode</span>
+            </label>
+            <label class="flex items-center gap-1.5 cursor-pointer">
+              <input type="checkbox" id="override-ocr" checked class="rounded border-slate-300 text-blue-600 focus:ring-blue-500">
+              <span>OCR Fallback</span>
+            </label>
+          </div>
+
+          <button onclick="parsePDF()" id="btn-parse" class="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm rounded-xl shadow-md flex items-center gap-2 transition-all">
+            <i class="fa-solid fa-bolt"></i> Extract & Parse PDF
+          </button>
+        </div>
+      </div>
+
+      <!-- Loading Spinner & Real-time Logs Console -->
+      <div id="parse-loading" class="hidden bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+        <div class="flex items-center gap-3">
+          <div class="animate-spin rounded-full h-8 w-8 border-3 border-blue-600 border-t-transparent"></div>
+          <div>
+            <h4 class="text-sm font-bold text-slate-900">Processing PDF document...</h4>
+            <p class="text-xs text-slate-500">Live execution logs and AI model pipeline progress:</p>
+          </div>
+        </div>
+
+        <!-- Terminal Console -->
+        <div id="stream-logs-console" class="bg-slate-900 border border-slate-800 rounded-xl p-4 font-mono text-xs text-slate-300 max-h-56 overflow-y-auto space-y-1 shadow-inner">
+          <div class="text-slate-500">// Pipeline logs initialized...</div>
+        </div>
+      </div>
+
+      <!-- Error Display Box -->
+      <div id="parse-error-box" class="hidden bg-rose-50 border border-rose-200 rounded-2xl p-6 text-rose-900 space-y-3 shadow-sm">
+        <div class="flex items-start gap-3">
+          <i class="fa-solid fa-circle-exclamation text-2xl text-rose-600 mt-0.5"></i>
+          <div>
+            <h4 class="font-bold text-sm">Processing Failed</h4>
+            <p id="error-box-msg" class="text-xs text-rose-700 mt-1 font-mono bg-rose-100/70 p-2.5 rounded-lg border border-rose-200 break-all"></p>
+          </div>
+        </div>
+        <div class="flex gap-3 pt-2">
+          <button onclick="switchTab('tab-settings')" class="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold shadow flex items-center gap-2">
+            <i class="fa-solid fa-sliders"></i> Open Settings to Fix Credentials / Model
+          </button>
+        </div>
+      </div>
+
+      <!-- Results Display -->
+      <div id="parse-results" class="hidden bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        
+        <!-- Results Header -->
+        <div class="p-6 border-b border-slate-200 bg-slate-50 flex flex-wrap justify-between items-center gap-4">
+          <div>
+            <h3 id="result-title" class="text-base font-bold text-slate-900">Extracted Document Content</h3>
+            <p id="result-meta" class="text-xs text-slate-500">Pages: 0 | Time: 0s</p>
+
+            <!-- Indicators for LLM, VLM, and OCR Fallback -->
+            <div id="result-indicators" class="flex flex-wrap items-center gap-2 mt-2.5 text-xs">
+              <span id="ind-llm" class="px-2.5 py-1 bg-blue-100 text-blue-800 border border-blue-200 rounded-lg font-medium flex items-center gap-1.5">
+                <i class="fa-solid fa-brain text-blue-600"></i> LLM: <span id="ind-llm-val">--</span>
+              </span>
+              <span id="ind-vlm" class="px-2.5 py-1 bg-purple-100 text-purple-800 border border-purple-200 rounded-lg font-medium flex items-center gap-1.5">
+                <i class="fa-solid fa-eye text-purple-600"></i> VLM: <span id="ind-vlm-val">--</span>
+              </span>
+              <span id="ind-ocr" class="px-2.5 py-1 bg-slate-100 text-slate-700 border border-slate-200 rounded-lg font-medium flex items-center gap-1.5">
+                <i class="fa-solid fa-font"></i> OCR Fallback: <span id="ind-ocr-val">Not Used</span>
+              </span>
+            </div>
+          </div>
+
+          <div class="flex gap-2">
+            <button onclick="copyResultsMarkdown()" class="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-medium flex items-center gap-1.5 shadow-sm">
+              <i class="fa-regular fa-copy"></i> Copy Markdown
+            </button>
+            <button onclick="downloadResultsJSON()" class="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-medium flex items-center gap-1.5 shadow-sm">
+              <i class="fa-solid fa-download"></i> Download JSON
+            </button>
+          </div>
+        </div>
+
+        <!-- Result Sub-tabs -->
+        <div class="border-b border-slate-200 bg-white px-6 flex gap-6 text-sm">
+          <button onclick="showResultSubTab('sub-md')" id="btn-sub-md" class="py-3 font-semibold text-blue-600 border-b-2 border-blue-600">Markdown Preview</button>
+          <button onclick="showResultSubTab('sub-pages')" id="btn-sub-pages" class="py-3 text-slate-500 hover:text-slate-800">Page Breakdown</button>
+          <button onclick="showResultSubTab('sub-summary')" id="btn-sub-summary" class="py-3 text-slate-500 hover:text-slate-800">Summary</button>
+          <button onclick="showResultSubTab('sub-raw')" id="btn-sub-raw" class="py-3 text-slate-500 hover:text-slate-800">Raw JSON</button>
+        </div>
+
+        <!-- Sub-tab contents -->
+        <div class="p-6">
+          <!-- Markdown View -->
+          <div id="sub-md" class="prose prose-slate max-w-none"></div>
+
+          <!-- Page Breakdown View -->
+          <div id="sub-pages" class="hidden space-y-4"></div>
+
+          <!-- Summary View -->
+          <div id="sub-summary" class="hidden prose prose-slate max-w-none"></div>
+
+          <!-- Raw JSON View -->
+          <div id="sub-raw" class="hidden">
+            <pre id="raw-json-output" class="text-xs font-mono bg-slate-900 text-emerald-400 p-4 rounded-xl overflow-x-auto"></pre>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- TAB 2: SETTINGS -->
+    <div id="tab-settings" class="hidden space-y-6">
+      
+      <!-- Header Banner -->
+      <div class="bg-gradient-to-r from-slate-900 to-blue-900 text-white p-6 rounded-2xl shadow border border-slate-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h2 class="text-lg font-bold">API Keys & Model Configurations</h2>
+          <p class="text-xs text-slate-300 mt-1">Configure your LLM & VLM API credentials for Google Gemini, OpenRouter, Ollama, OpenAI, or Custom endpoints.</p>
+        </div>
+        <button onclick="saveSettings()" class="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold rounded-xl shadow flex items-center gap-2">
+          <i class="fa-solid fa-floppy-disk"></i> Save Settings
+        </button>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        <!-- LLM Configuration Card -->
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+            <h3 class="font-bold text-slate-900 flex items-center gap-2">
+              <i class="fa-solid fa-brain text-blue-600"></i> Text LLM Provider
+            </h3>
+            <button onclick="testConnection('llm')" class="text-xs px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-lg border border-slate-300 flex items-center gap-1">
+              <i class="fa-solid fa-plug"></i> Test Connection
+            </button>
+          </div>
+
+          <!-- LLM Provider Select -->
+          <div>
+            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Provider Service</label>
+            <select id="cfg-llm-provider" onchange="handleProviderSelect('llm')" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+              <option value="gemini">Google Gemini API</option>
+              <option value="openrouter">OpenRouter</option>
+              <option value="ollama">Ollama (Local AI)</option>
+              <option value="openai">OpenAI API</option>
+              <option value="custom">Custom OpenAI-Compatible Endpoint</option>
+            </select>
+          </div>
+
+          <!-- LLM API Key -->
+          <div>
+            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">API Key</label>
+            <div class="relative">
+              <input id="cfg-llm-key" type="password" placeholder="Enter API Key (or leave blank for Ollama)" class="w-full px-3 py-2 pr-10 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono">
+              <button onclick="togglePassword('cfg-llm-key')" type="button" class="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 text-xs">
+                <i class="fa-regular fa-eye"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- LLM Base URL -->
+          <div>
+            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Base URL</label>
+            <input id="cfg-llm-url" type="text" placeholder="https://..." class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono text-xs">
+          </div>
+
+          <!-- LLM Model Name -->
+          <div>
+            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Model Name</label>
+            <input id="cfg-llm-model" type="text" placeholder="e.g. gemini-2.5-flash" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono">
+            
+            <!-- Quick Presets -->
+            <div id="llm-presets" class="flex flex-wrap gap-1.5 mt-2"></div>
+          </div>
+
+          <!-- Test result box -->
+          <div id="llm-test-result" class="hidden text-xs p-3 rounded-xl border"></div>
+        </div>
+
+        <!-- VLM Configuration Card -->
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+            <h3 class="font-bold text-slate-900 flex items-center gap-2">
+              <i class="fa-solid fa-eye text-purple-600"></i> Vision VLM Provider
+            </h3>
+            <button onclick="testConnection('vlm')" class="text-xs px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-lg border border-slate-300 flex items-center gap-1">
+              <i class="fa-solid fa-plug"></i> Test Connection
+            </button>
+          </div>
+
+          <!-- Sync Checkbox -->
+          <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-200 flex items-center gap-2">
+            <input id="sync-vlm-llm" type="checkbox" onchange="toggleVlmSync()" class="rounded border-slate-300 text-blue-600">
+            <label for="sync-vlm-llm" class="text-xs font-medium text-slate-700 cursor-pointer">Use same provider settings as Text LLM</label>
+          </div>
+
+          <div id="vlm-fields-container" class="space-y-4">
+            <!-- VLM Provider Select -->
+            <div>
+              <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Provider Service</label>
+              <select id="cfg-vlm-provider" onchange="handleProviderSelect('vlm')" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                <option value="gemini">Google Gemini API</option>
+                <option value="openrouter">OpenRouter</option>
+                <option value="ollama">Ollama (Local AI)</option>
+                <option value="openai">OpenAI API</option>
+                <option value="custom">Custom OpenAI-Compatible Endpoint</option>
+              </select>
+            </div>
+
+            <!-- VLM API Key -->
+            <div>
+              <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">API Key</label>
+              <div class="relative">
+                <input id="cfg-vlm-key" type="password" placeholder="Enter API Key" class="w-full px-3 py-2 pr-10 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono">
+                <button onclick="togglePassword('cfg-vlm-key')" type="button" class="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 text-xs">
+                  <i class="fa-regular fa-eye"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- VLM Base URL -->
+            <div>
+              <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Base URL</label>
+              <input id="cfg-vlm-url" type="text" placeholder="https://..." class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono text-xs">
+            </div>
+
+            <!-- VLM Model Name -->
+            <div>
+              <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Model Name</label>
+              <input id="cfg-vlm-model" type="text" placeholder="e.g. gemini-2.5-flash" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono">
+              
+              <!-- Quick Presets -->
+              <div id="vlm-presets" class="flex flex-wrap gap-1.5 mt-2"></div>
+            </div>
+          </div>
+
+          <!-- Test result box -->
+          <div id="vlm-test-result" class="hidden text-xs p-3 rounded-xl border"></div>
+        </div>
+
+      </div>
+
+      <!-- Execution Options Card -->
+      <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+        <h3 class="font-bold text-slate-900 border-b border-slate-100 pb-3 flex items-center gap-2">
+          <i class="fa-solid fa-gears text-slate-700"></i> Parsing & OCR Execution Settings
+        </h3>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <label class="flex items-center gap-3 p-3 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer">
+            <input type="checkbox" id="cfg-sequential" class="w-4 h-4 text-blue-600 rounded">
+            <div>
+              <div class="text-xs font-semibold text-slate-800">Sequential Processing</div>
+              <div class="text-[11px] text-slate-500">Passes prior page summaries as context</div>
+            </div>
+          </label>
+
+          <label class="flex items-center gap-3 p-3 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer">
+            <input type="checkbox" id="cfg-ocr" class="w-4 h-4 text-blue-600 rounded">
+            <div>
+              <div class="text-xs font-semibold text-slate-800">OCR Fallback</div>
+              <div class="text-[11px] text-slate-500">Uses Tesseract when VLM is absent</div>
+            </div>
+          </label>
+
+          <div class="p-3 rounded-xl border border-slate-200 bg-slate-50">
+            <label class="block text-xs font-semibold text-slate-800 mb-1">Max Workers (Parallel Mode)</label>
+            <input id="cfg-max-workers" type="number" min="1" max="16" value="4" class="w-full px-2 py-1 border border-slate-300 rounded text-xs">
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- TAB 3: API REFERENCE -->
+    <div id="tab-api" class="hidden space-y-6">
+      
+      <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+        <div class="flex justify-between items-center border-b border-slate-100 pb-4">
+          <div>
+            <h2 class="text-lg font-bold text-slate-900">API Documentation</h2>
+            <p class="text-xs text-slate-500">Integrate DocuSense programmatically into Python, Node.js, or cURL workflows.</p>
+          </div>
+          <a href="/docs" target="_blank" class="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-medium flex items-center gap-2">
+            <i class="fa-solid fa-arrow-up-right-from-square"></i> OpenAPI / Swagger Docs
+          </a>
+        </div>
+
+        <div class="space-y-4">
+          <!-- Endpoint Pill -->
+          <div class="flex items-center gap-3">
+            <span class="px-3 py-1 bg-emerald-600 text-white font-bold text-xs rounded-md">POST</span>
+            <code class="text-sm font-mono text-slate-800">/api/parse-pdf</code>
+          </div>
+
+          <!-- Code snippets -->
+          <div class="space-y-3">
+            <h4 class="text-xs font-semibold uppercase text-slate-500">cURL Example</h4>
+            <pre class="bg-slate-900 text-emerald-400 p-4 rounded-xl text-xs font-mono overflow-x-auto">
+curl -X POST "http://localhost:8000/api/parse-pdf" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "pdf_url": "https://example.com/sample.pdf",
+    "process_sequentially": true
+  }'</pre>
+
+            <h4 class="text-xs font-semibold uppercase text-slate-500">Python Example</h4>
+            <pre class="bg-slate-900 text-emerald-400 p-4 rounded-xl text-xs font-mono overflow-x-auto">
+import requests
+
+response = requests.post(
+    "http://localhost:8000/api/parse-pdf",
+    json={
+        "pdf_url": "https://example.com/sample.pdf",
+        "process_sequentially": True
+    }
+)
+result = response.json()
+print("Summary:", result["data"]["summary"])
+print("Parsed Text:", result["data"]["text"])</pre>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <script>
+    // Preset configurations per provider
+    const PRESETS = {
+      gemini: {
+        url: "https://generativelanguage.googleapis.com/v1beta/openai/",
+        llm_models: ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"],
+        vlm_models: ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"]
+      },
+      openrouter: {
+        url: "https://openrouter.ai/api/v1",
+        llm_models: ["google/gemini-2.5-flash", "anthropic/claude-3.5-sonnet", "meta-llama/llama-3.3-70b-instruct", "deepseek/deepseek-r1"],
+        vlm_models: ["google/gemini-2.5-flash", "anthropic/claude-3.5-sonnet", "openai/gpt-4o-mini"]
+      },
+      ollama: {
+        url: "http://localhost:11434/v1",
+        llm_models: ["llama3.2", "qwen2.5-coder", "mistral"],
+        vlm_models: ["llava", "llama3.2-vision", "qwen2.5-vl"]
+      },
+      openai: {
+        url: "https://api.openai.com/v1",
+        llm_models: ["gpt-4o-mini", "gpt-4o", "o3-mini"],
+        vlm_models: ["gpt-4o-mini", "gpt-4o"]
+      },
+      custom: {
+        url: "",
+        llm_models: [],
+        vlm_models: []
+      }
+    };
+
+    let selectedFile = null;
+    let currentParsedData = null;
+
+    document.addEventListener("DOMContentLoaded", () => {
+      loadSettings();
+    });
+
+    function switchTab(tabId) {
+      ['tab-parse', 'tab-settings', 'tab-api'].forEach(id => {
+        document.getElementById(id).classList.add('hidden');
+        document.getElementById('nav-' + id).classList.remove('tab-active');
+      });
+      document.getElementById(tabId).classList.remove('hidden');
+      document.getElementById('nav-' + tabId).classList.add('tab-active');
+    }
+
+    function setInputMode(mode) {
+      if (mode === 'file') {
+        document.getElementById('area-file').classList.remove('hidden');
+        document.getElementById('area-url').classList.add('hidden');
+        document.getElementById('btn-mode-file').className = "px-3 py-1.5 rounded-md bg-white text-slate-800 shadow-sm";
+        document.getElementById('btn-mode-url').className = "px-3 py-1.5 rounded-md text-slate-600 hover:text-slate-900";
+      } else {
+        document.getElementById('area-file').classList.add('hidden');
+        document.getElementById('area-url').classList.remove('hidden');
+        document.getElementById('btn-mode-file').className = "px-3 py-1.5 rounded-md text-slate-600 hover:text-slate-900";
+        document.getElementById('btn-mode-url').className = "px-3 py-1.5 rounded-md bg-white text-slate-800 shadow-sm";
+      }
+    }
+
+    function handleFileSelect(event) {
+      const files = event.target.files;
+      if (files && files.length > 0) {
+        selectedFile = files[0];
+        const display = document.getElementById('file-name-display');
+        display.innerText = `Selected: ${selectedFile.name} (${(selectedFile.size / 1024 / 1024).toFixed(2)} MB)`;
+        display.classList.remove('hidden');
+      }
+    }
+
+    function togglePassword(id) {
+      const input = document.getElementById(id);
+      input.type = input.type === 'password' ? 'text' : 'password';
+    }
+
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/settings');
+        const data = await res.json();
+        
+        document.getElementById('cfg-llm-provider').value = data.llm_provider || 'gemini';
+        document.getElementById('cfg-llm-key').value = data.llm_api_key || '';
+        document.getElementById('cfg-llm-url').value = data.llm_base_url || '';
+        document.getElementById('cfg-llm-model').value = data.llm_model || '';
+
+        document.getElementById('cfg-vlm-provider').value = data.vlm_provider || 'gemini';
+        document.getElementById('cfg-vlm-key').value = data.vlm_api_key || '';
+        document.getElementById('cfg-vlm-url').value = data.vlm_base_url || '';
+        document.getElementById('cfg-vlm-model').value = data.vlm_model || '';
+
+        document.getElementById('cfg-sequential').checked = data.process_sequentially !== false;
+        document.getElementById('cfg-ocr').checked = data.ocr_fallback !== false;
+        document.getElementById('cfg-max-workers').value = data.max_workers || 4;
+
+        renderPresets('llm');
+        renderPresets('vlm');
+
+        // Badge
+        document.getElementById('badge-text').innerText = `LLM: ${data.llm_provider.toUpperCase()} (${data.llm_model})`;
+      } catch (err) {
+        console.error("Error loading settings:", err);
+      }
+    }
+
+    function handleProviderSelect(target) {
+      const provider = document.getElementById(`cfg-${target}-provider`).value;
+      const preset = PRESETS[provider];
+      if (preset) {
+        if (preset.url) document.getElementById(`cfg-${target}-url`).value = preset.url;
+        const models = target === 'llm' ? preset.llm_models : preset.vlm_models;
+        if (models && models.length > 0) {
+          document.getElementById(`cfg-${target}-model`).value = models[0];
+        }
+      }
+      renderPresets(target);
+    }
+
+    function renderPresets(target) {
+      const provider = document.getElementById(`cfg-${target}-provider`).value;
+      const container = document.getElementById(`${target}-presets`);
+      container.innerHTML = '';
+      const preset = PRESETS[provider];
+      if (!preset) return;
+      const models = target === 'llm' ? preset.llm_models : preset.vlm_models;
+
+      models.forEach(m => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'px-2 py-0.5 text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 rounded border border-slate-300 font-mono';
+        btn.innerText = m;
+        btn.onclick = () => {
+          document.getElementById(`cfg-${target}-model`).value = m;
+        };
+        container.appendChild(btn);
+      });
+    }
+
+    function toggleVlmSync() {
+      const checked = document.getElementById('sync-vlm-llm').checked;
+      const container = document.getElementById('vlm-fields-container');
+      if (checked) {
+        container.classList.add('opacity-50', 'pointer-events-none');
+        document.getElementById('cfg-vlm-provider').value = document.getElementById('cfg-llm-provider').value;
+        document.getElementById('cfg-vlm-key').value = document.getElementById('cfg-llm-key').value;
+        document.getElementById('cfg-vlm-url').value = document.getElementById('cfg-llm-url').value;
+        document.getElementById('cfg-vlm-model').value = document.getElementById('cfg-llm-model').value;
+      } else {
+        container.classList.remove('opacity-50', 'pointer-events-none');
+      }
+    }
+
+    async function saveSettings() {
+      if (document.getElementById('sync-vlm-llm').checked) {
+        toggleVlmSync();
+      }
+
+      const payload = {
+        llm_provider: document.getElementById('cfg-llm-provider').value,
+        llm_api_key: document.getElementById('cfg-llm-key').value,
+        llm_base_url: document.getElementById('cfg-llm-url').value,
+        llm_model: document.getElementById('cfg-llm-model').value,
+        vlm_provider: document.getElementById('cfg-vlm-provider').value,
+        vlm_api_key: document.getElementById('cfg-vlm-key').value,
+        vlm_base_url: document.getElementById('cfg-vlm-url').value,
+        vlm_model: document.getElementById('cfg-vlm-model').value,
+        process_sequentially: document.getElementById('cfg-sequential').checked,
+        ocr_fallback: document.getElementById('cfg-ocr').checked,
+        max_workers: parseInt(document.getElementById('cfg-max-workers').value) || 4
+      };
+
+      try {
+        const res = await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const result = await res.json();
+        if (res.ok) {
+          showToast("Settings saved successfully!", "success");
+          document.getElementById('badge-text').innerText = `LLM: ${payload.llm_provider.toUpperCase()} (${payload.llm_model})`;
+        } else {
+          showToast("Failed to save settings: " + (result.detail || "Error"), "error");
+        }
+      } catch (err) {
+        showToast("Error saving settings: " + err, "error");
+      }
+    }
+
+    async function testConnection(target) {
+      const resultBox = document.getElementById(`${target}-test-result`);
+      resultBox.classList.remove('hidden', 'bg-emerald-50', 'border-emerald-200', 'text-emerald-800', 'bg-rose-50', 'border-rose-200', 'text-rose-800');
+      resultBox.classList.add('bg-slate-50', 'border-slate-200', 'text-slate-700');
+      resultBox.innerHTML = '<i class="fa-solid fa-spinner animate-spin"></i> Testing connection...';
+
+      const payload = {
+        type: target,
+        provider: document.getElementById(`cfg-${target}-provider`).value,
+        api_key: document.getElementById(`cfg-${target}-key`).value,
+        base_url: document.getElementById(`cfg-${target}-url`).value,
+        model: document.getElementById(`cfg-${target}-model`).value
+      };
+
+      try {
+        const res = await fetch('/api/settings/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+          resultBox.classList.remove('bg-slate-50', 'border-slate-200', 'text-slate-700');
+          resultBox.classList.add('bg-emerald-50', 'border-emerald-200', 'text-emerald-800');
+          resultBox.innerHTML = `<i class="fa-solid fa-check"></i> <strong>Success!</strong> ${data.message}`;
+        } else {
+          resultBox.classList.remove('bg-slate-50', 'border-slate-200', 'text-slate-700');
+          resultBox.classList.add('bg-rose-50', 'border-rose-200', 'text-rose-800');
+          resultBox.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> <strong>Error:</strong> ${data.message}`;
+        }
+      } catch (err) {
+        resultBox.classList.add('bg-rose-50', 'border-rose-200', 'text-rose-800');
+        resultBox.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> <strong>Request failed:</strong> ${err}`;
+      }
+    }
+
+    async function parsePDF() {
+      const isFileMode = !document.getElementById('area-file').classList.contains('hidden');
+      const loading = document.getElementById('parse-loading');
+      const resultsCard = document.getElementById('parse-results');
+      const errorBox = document.getElementById('parse-error-box');
+      const logsConsole = document.getElementById('stream-logs-console');
+
+      errorBox.classList.add('hidden');
+      resultsCard.classList.add('hidden');
+      loading.classList.remove('hidden');
+      logsConsole.innerHTML = '<div class="text-slate-500">// Initiating PDF processing pipeline...</div>';
+
+      const formData = new FormData();
+      formData.append('process_sequentially', document.getElementById('override-sequential').checked);
+      formData.append('ocr_fallback', document.getElementById('override-ocr').checked);
+
+      if (isFileMode) {
+        if (!selectedFile) {
+          showToast("Please select a PDF file first!", "error");
+          loading.classList.add('hidden');
+          return;
+        }
+        formData.append('file', selectedFile);
+      } else {
+        const urlVal = document.getElementById('pdf-url-input').value.trim();
+        if (!urlVal) {
+          showToast("Please enter a PDF URL or Base64 data string!", "error");
+          loading.classList.add('hidden');
+          return;
+        }
+        formData.append('pdf_url', urlVal);
+      }
+
+      const startTime = Date.now();
+
+      try {
+        const response = await fetch('/api/parse-pdf-stream', {
+          method: 'POST',
+          body: formData
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`Server returned HTTP ${response.status}: ${errText}`);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop();
+
+          for (const part of parts) {
+            const line = part.trim();
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.substring(6));
+                if (data.type === 'log') {
+                  appendLog(data.message, data.level);
+                } else if (data.type === 'error') {
+                  showErrorBox(data.message);
+                  return;
+                } else if (data.type === 'result') {
+                  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                  currentParsedData = data.data;
+                  renderParsedResults(currentParsedData, elapsed);
+                  showToast("PDF parsed successfully!", "success");
+                  return;
+                }
+              } catch (e) {
+                console.error("Error parsing SSE data line:", e);
+              }
+            }
+          }
+        }
+      } catch (err) {
+        showErrorBox(err.message || String(err));
+      } finally {
+        loading.classList.add('hidden');
+      }
+    }
+
+    function appendLog(msg, level = "info") {
+      const consoleElem = document.getElementById('stream-logs-console');
+      const now = new Date().toLocaleTimeString();
+      const line = document.createElement('div');
+      
+      if (level === "error") {
+        line.className = "text-rose-400 font-semibold";
+        line.innerText = `[${now}] [ERROR] ${msg}`;
+      } else if (level === "warning") {
+        line.className = "text-amber-400";
+        line.innerText = `[${now}] [WARN] ${msg}`;
+      } else {
+        line.className = "text-emerald-400";
+        line.innerText = `[${now}] [INFO] ${msg}`;
+      }
+      
+      consoleElem.appendChild(line);
+      consoleElem.scrollTop = consoleElem.scrollHeight;
+    }
+
+    function showErrorBox(msg) {
+      const errorBox = document.getElementById('parse-error-box');
+      document.getElementById('error-box-msg').innerText = msg;
+      errorBox.classList.remove('hidden');
+      showToast("Parsing failed. Check error message below.", "error");
+    }
+
+    function renderParsedResults(data, elapsed) {
+      document.getElementById('parse-results').classList.remove('hidden');
+      
+      const numPages = data.pages ? data.pages.length : 0;
+      document.getElementById('result-meta').innerText = `Pages: ${numPages} | Time Elapsed: ${elapsed}s`;
+
+      // Update Metadata Indicators
+      const meta = data.metadata || {};
+      document.getElementById('ind-llm-val').innerText = `${(meta.llm_provider || 'N/A').toUpperCase()} (${meta.llm_model || 'N/A'})`;
+      document.getElementById('ind-vlm-val').innerText = `${(meta.vlm_provider || 'N/A').toUpperCase()} (${meta.vlm_model || 'N/A'})`;
+
+      const ocrElem = document.getElementById('ind-ocr');
+      const ocrValElem = document.getElementById('ind-ocr-val');
+      if (meta.ocr_fallback_used) {
+        ocrElem.className = "px-2.5 py-1 bg-amber-100 text-amber-900 border border-amber-300 rounded-lg font-medium flex items-center gap-1.5 font-semibold shadow-sm";
+        ocrValElem.innerText = "Used (Tesseract)";
+      } else {
+        ocrElem.className = "px-2.5 py-1 bg-slate-100 text-slate-700 border border-slate-200 rounded-lg font-medium flex items-center gap-1.5";
+        ocrValElem.innerText = "Not Used";
+      }
+
+      // 1. Markdown view
+      const mdContent = data.text || "No text extracted.";
+      document.getElementById('sub-md').innerHTML = marked.parse(mdContent);
+
+      // 2. Summary view
+      const summaryContent = data.summary || "No summary generated.";
+      document.getElementById('sub-summary').innerHTML = marked.parse(`### Executive Document Summary\n\n${summaryContent}`);
+
+      // 3. Page Breakdown
+      const pagesContainer = document.getElementById('sub-pages');
+      pagesContainer.innerHTML = '';
+      if (data.pages && data.pages.length > 0) {
+        data.pages.forEach((p, idx) => {
+          const card = document.createElement('div');
+          card.className = "bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2";
+          
+          let methodBadge = `<span class="text-[11px] px-2 py-0.5 bg-blue-100 text-blue-800 border border-blue-200 rounded font-mono font-semibold"><i class="fa-solid fa-brain"></i> LLM</span>`;
+          if (p.extraction_method === 'vlm') {
+            methodBadge = `<span class="text-[11px] px-2 py-0.5 bg-purple-100 text-purple-800 border border-purple-200 rounded font-mono font-semibold"><i class="fa-solid fa-eye"></i> VLM</span>`;
+          } else if (p.extraction_method === 'ocr' || p.used_ocr_fallback) {
+            methodBadge = `<span class="text-[11px] px-2 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 rounded font-mono font-semibold"><i class="fa-solid fa-font"></i> OCR Fallback</span>`;
+          } else if (p.extraction_method === 'raw_text') {
+            methodBadge = `<span class="text-[11px] px-2 py-0.5 bg-slate-100 text-slate-700 border border-slate-200 rounded font-mono">Raw Text</span>`;
+          }
+
+          card.innerHTML = `
+            <div class="flex items-center justify-between border-b border-slate-200 pb-2">
+              <span class="font-bold text-xs text-slate-800">Page ${idx + 1}</span>
+              <div class="flex items-center gap-2">
+                ${p.has_images ? '<span class="text-[10px] px-1.5 py-0.5 bg-slate-200 text-slate-700 rounded">Has Images</span>' : ''}
+                ${methodBadge}
+              </div>
+            </div>
+            <div class="text-xs text-slate-600"><strong>Summary:</strong> ${p.summary || 'None'}</div>
+            <div class="prose prose-slate prose-sm text-xs bg-white p-3 rounded-lg border border-slate-200 overflow-x-auto max-h-60 overflow-y-auto">
+              ${marked.parse(p.text || '')}
+            </div>
+          `;
+          pagesContainer.appendChild(card);
+        });
+      }
+
+      // 4. Raw JSON
+      document.getElementById('raw-json-output').innerText = JSON.stringify(data, null, 2);
+
+      showResultSubTab('sub-md');
+    }
+
+    function showResultSubTab(subId) {
+      ['sub-md', 'sub-pages', 'sub-summary', 'sub-raw'].forEach(id => {
+        document.getElementById(id).classList.add('hidden');
+        document.getElementById('btn-' + id).className = "py-3 text-slate-500 hover:text-slate-800";
+      });
+      document.getElementById(subId).classList.remove('hidden');
+      document.getElementById('btn-' + subId).className = "py-3 font-semibold text-blue-600 border-b-2 border-blue-600";
+    }
+
+    function copyResultsMarkdown() {
+      if (!currentParsedData) return;
+      navigator.clipboard.writeText(currentParsedData.text || '');
+      showToast("Markdown copied to clipboard!", "success");
+    }
+
+    function downloadResultsJSON() {
+      if (!currentParsedData) return;
+      const blob = new Blob([JSON.stringify(currentParsedData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'docusense_parsed_result.json';
+      a.click();
+    }
+
+    function showToast(msg, type = "success") {
+      const toast = document.getElementById('toast');
+      const icon = document.getElementById('toast-icon');
+      const msgElem = document.getElementById('toast-msg');
+
+      msgElem.innerText = msg;
+      if (type === "success") {
+        icon.className = "fa-solid fa-circle-check text-emerald-400";
+      } else {
+        icon.className = "fa-solid fa-triangle-exclamation text-rose-400";
+      }
+
+      toast.classList.remove('hidden');
+      setTimeout(() => {
+        toast.classList.add('hidden');
+      }, 3500);
+    }
+  </script>
+</body>
+</html>

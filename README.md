@@ -2,16 +2,28 @@
 
 DocuSense is a powerful PDF parsing and content extraction tool that leverages Large Language Models (LLMs) and Vision Language Models (VLMs) to extract, process, and summarize content from PDF documents. Whether your PDF contains text, images, or a combination of both, DocuSense provides a comprehensive solution for extracting meaningful information.
 
+## Web App & FastAPI Server
+
+DocuSense includes a full-featured FastAPI web app and REST API with an interactive dashboard and settings interface.
+
+### Running the Web Server
+
+Start the web application using `uv`:
+
+```bash
+uv run uvicorn api:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Then open your browser to `http://localhost:8000`:
+- **Web UI Dashboard**: `http://localhost:8000/` (Upload local PDFs or enter URLs, view Markdown rendering & page breakdowns)
+- **Settings Page**: Configure API keys, base URLs, and model selections for **Google Gemini API**, **OpenRouter**, **Ollama**, **OpenAI**, and custom endpoints. Test connection live from the UI!
+- **OpenAPI / Swagger Docs**: `http://localhost:8000/docs`
+
 ## Features
 
-- **Text Extraction**: Extract and clean text from PDF documents, preserving the original meaning and structure.
-- **Image Processing**: Extract text and content from images within PDFs using advanced vision models.
-- **Document Summarization**: Generate hierarchical summaries of the document content.
-- **Parallel Processing**: Process multiple pages in parallel for faster extraction.
-- **Customizable Providers**: Support for multiple LLM and VLM providers, including OpenAI and any OpenAI API-compatible models.
-- **OCR Fallback**: Fallback to OCR (Tesseract) for image processing when VLM is not available.
-- **Header/Footer Detection**: Automatically detect and remove headers and footers from the document.
-- **Confidence-Based Merging**: Merge adjacent chunks of text based on confidence scores for better context preservation.
+- **Multi-Model Provider Support**: Google Gemini API, OpenRouter, Ollama (Local AI), OpenAI, and any OpenAI-compatible API.
+- **Settings Dashboard**: Enter API keys & model names per service with live connection testing.
+- **Web Interface & REST API**: Interactive web dashboard with Markdown preview, page breakdowns, and REST API access.
 
 ## How It works
 
