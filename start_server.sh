@@ -10,6 +10,13 @@ echo "=================================================="
 echo "          DocuSense FastAPI Web Server            "
 echo "=================================================="
 
+# Check if port 8000 is occupied by a stale process and free it
+if command -v lsof >/dev/null 2>&1 && lsof -i :8000 >/dev/null 2>&1; then
+    echo "[WARN] Port 8000 is currently occupied. Terminating stale process..."
+    fuser -k 8000/tcp >/dev/null 2>&1 || true
+    sleep 1
+fi
+
 # Check if uv is installed
 if command -v uv >/dev/null 2>&1; then
     echo "[INFO] Using uv dependency manager..."
