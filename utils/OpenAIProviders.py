@@ -131,8 +131,17 @@ class OpenAIProvider(BaseLLMProvider):
 
             return processed_text, summary
 
+        except openai.RateLimitError as e:
+            msg = f"API Quota/Rate Limit Exceeded (HTTP 429) for '{self.provider_type}' model '{self.model_name}'. Switch provider or check quota in Settings."
+            logger.error(msg)
+            return text, msg
+        except openai.AuthenticationError as e:
+            msg = f"API Authentication Failed (HTTP 401) for '{self.provider_type}'. Please check your API Key in Settings."
+            logger.error(msg)
+            return text, msg
         except Exception as e:
-            logger.error(f"Error processing text with LLM API ({self.provider_type}): {e}", exc_info=True)
+            msg = f"API Error ({self.provider_type}): {str(e)}"
+            logger.error(msg, exc_info=True)
             return text, f"Error generating summary: {str(e)}"
 
 
@@ -240,8 +249,17 @@ class OpenAIVisionProvider(BaseVLMProvider):
 
             return processed_text, summary
 
+        except openai.RateLimitError as e:
+            msg = f"API Quota/Rate Limit Exceeded (HTTP 429) for '{self.provider_type}' model '{self.model_name}'. Switch provider or check quota in Settings."
+            logger.error(msg)
+            return "", msg
+        except openai.AuthenticationError as e:
+            msg = f"API Authentication Failed (HTTP 401) for '{self.provider_type}'. Please check your API Key in Settings."
+            logger.error(msg)
+            return "", msg
         except Exception as e:
-            logger.error(f"Error processing image with Vision API ({self.provider_type}): {str(e)}", exc_info=True)
+            msg = f"Vision API Error ({self.provider_type}): {str(e)}"
+            logger.error(msg, exc_info=True)
             return "", f"Error: {str(e)}"
 
 
